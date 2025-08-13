@@ -1,0 +1,417 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>C# to do app</title>
+        <meta charset="utf-8">
+        <meta name="author" content="Ben Tennyson">
+        <meta name="description" content="">
+        <link rel="stylesheet" href="homePageStyles.css">
+    </head>
+    <body>
+        <h1>To-do List</h1>
+        <input type="text" onkeydown="handleListSize(event)" class="listSize" placeholder="Enter number of tasks">
+
+        <button class="taskDec" onclick="handleTaskDec()">-</button>
+        <button class="taskInc" onclick="handleTaskInc()">+</button>
+        <button class="saveButton" onclick="putList()">Save</button>
+        <button class="calendar" onclick="handleCalendar()">Calendar</button>
+
+        <p>Tasks: </p>
+        <!-- Ordered list container -->
+        <ol id="taskList">
+            <li>
+                <input type="text" onkeydown="handleTaskNameInput(event)" placeholder="Task name..." class="taskName">
+                <input type="text" onkeydown="handleTaskTextInput(event)" class="taskText">
+                <label for="priority">Priority: </label>
+                <select name="priority" id="priority">
+                    <option value="2">High</option>
+                    <option value="1">Medium</option>
+                    <option value="0">Low</option>
+                </select>
+            </li>
+        </ol>
+
+        <script type="text/javascript">
+            // Get reference to the task list
+            const taskList = document.getElementById("taskList");
+
+            function handleListSize(event) {
+                if (event.key === "Enter") {
+                    const desiredSize = parseInt(event.target.value);
+                    if (isNaN(desiredSize) || desiredSize < 0) return;
+
+                    // Clear current list
+                    taskList.innerHTML = '';
+
+                    // Add desired number of tasks
+                    for (let i = 0; i < desiredSize; i++) {
+                        addTask();
+                    }
+                }
+            }
+
+
+
+            function handleTaskInc() {
+                addTask();
+            }
+
+
+
+            function handleTaskDec() {
+                if (taskList.children.length > 0) {
+                    taskList.removeChild(taskList.lastElementChild);
+                }
+            }
+
+
+
+            function addTask() {
+                // Create the new dom elements
+                const li = document.createElement("li");
+                const nameInput = document.createElement("input");
+                const textInput = document.createElement("input");
+                const label = document.createElement("label");
+                const select = document.createElement("select");
+                // Set the attributes of the dom elements
+                nameInput.placeholder = "Task Name";
+                nameInput.className = "taskName";
+                nameInput.onkeydown = handleTaskNameInput;
+                nameInput.type = "text";
+                textInput.className = "taskText";
+                textInput.type = "text";
+                textInput.onkeydown = handleTaskTextInput;
+                label.textContent = "Priority: ";
+                select.name = "priority";
+                label.setAttribute("for", "priority");
+                select.innerHTML = `
+                    <option value="2">High</option>
+                    <option value="1">Medium</option>
+                    <option value="0">Low</option>
+                `;
+                // Compose the elements and add them to the dom
+                li.appendChild(nameInput);
+                li.appendChild(textInput);
+                li.appendChild(label);
+                li.appendChild(select);
+                taskList.appendChild(li);
+            }
+
+
+
+            function handleTaskNameInput(event) {
+                if (event.key === "Enter") {
+                    const taskNameInput = event.target;
+                    const listItem = taskNameInput.closest("li");
+                    if (listItem) {
+                        const taskTextInput = listItem.querySelector(".taskText");
+                        if (taskTextInput) {
+                            taskTextInput.focus();
+                        }
+                    }
+                }
+            }
+
+
+
+            function handleTaskTextInput(event) {
+                if (event.key === "Enter") {
+                    const taskTextInput = event.target;
+                    const listItem = taskTextInput.closest("li");
+                    if (listItem) {
+                        const nextListItem = listItem.nextElementSibling;
+                        if (nextListItem) {
+                            const nextTaskNameInput = nextListItem.querySelector("input.taskName");
+                            if (nextTaskNameInput) {
+                                nextTaskNameInput.focus();
+                            }
+                        }
+                    }
+                }
+            }
+
+
+
+            // Create a global variable to track the number of times putList has been called
+            var putListCounter = 0;
+            async function putList(event) {
+                console.log("Executing putToDoItem in index.html");
+
+                // Generate the listID
+                const date = new Date();
+                const year = date.getFullYear();
+                const month = date.getMonth() + 1;
+                const day = date.getDate();
+                const listIDString = `${month}${day}${year}`;
+                const listID = Number(listIDString);
+
+                // If putList has not been called before insert the record for today's list in the list table
+                if (putListCounter === 0) {
+                    const listRecord = {
+                        listID: listID,
+                        userID: 1 // Change to real ID
+                    };
+
+                    console.log("Sending list record to backend:", listRecord);
+                    try {
+                        const response = await fetch("/putList", {
+                            method: "PUT",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(listRecord)
+                        });
+
+                        const result = await response.text();
+                        console.log("Server response:", result);
+                    } catch(err) {
+                        console.error("Failed to save task:", err);
+                    }
+                }
+
+                // Prepare the data to be sent to the backend for insertion in to the DB
+                const tasks = [];
+                // Get the children elements contained in taskList
+                const listItems = taskList.children;
+                console.log("Number of list items:", listItems.length);
+                // Get the children elements (attributes) of each list element (task) from the ordered list of tasks
+                for (let i = 0; i < listItems.length; i++) {
+                     const li = listItems[i];
+
+                    // Use optional chaining (?) to ensure that null and undefined values do not throw an error and trim() to remove trailing and leading whitespace
+                    const taskName = li.querySelector("input.taskName")?.value.trim();
+                    const taskText = li.querySelector("input.taskText")?.value.trim();
+                    const priority = li.querySelector("select[name='priority']")?.value;
+
+                    console.log("Raw values:", {
+                        taskName: li.querySelector("input.taskName")?.value,
+                        taskText: li.querySelector("input.taskText")?.value,
+                        priority: li.querySelector("select[name='priority']")?.value,
+                    });
+
+                    // Skip empty tasks
+                    if (!taskName || !taskText) {
+                        console.warn("Skipping task due to missing name or text:", { taskName, taskText });
+                        continue;
+                    }
+
+                    const task = {
+                        priority: priority,
+                        taskText: taskText,
+                        taskName: taskName,
+                        listID: listID,
+                        listPos: i + 1
+                    };
+                    
+                    tasks.push(task);
+                }
+                console.log("Sending task to backend:", tasks);
+                    // Send the task to the backend
+                    try {
+                        const response = await fetch("/putTasks", {
+                            method: "PUT",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(tasks)
+                        });
+
+                        const result = await response.text();
+                        console.log("Server response:", result);
+                    } catch(err) {
+                        console.error("Failed to save task:", err);
+                    }
+            }
+
+
+
+            // Global variables to be shared across the handleCalendar, prevMonth, and nextMonth functions
+            let currentMonthIndex;
+            let currentYear;
+            function handleCalendar() {
+                // Get the date 
+                const today = new Date();
+                // getMonth returns an int 0-11
+                if (typeof currentMonthIndex === "undefined") currentMonthIndex = today.getMonth();
+                if (typeof currentYear === "undefined") currentYear = today.getFullYear();
+
+                
+                const months = [
+                    "January", "February", "March", "April", "May", "June", "July", "August",
+                    "September", "October", "November", "December"
+                ];
+                const month = months[currentMonthIndex];
+
+                // Remove existing calendar if any
+                const existingCalendar = document.getElementById("calendarContainer");
+                if (existingCalendar) {
+                    existingCalendar.remove();
+                }
+
+                 // Container for calendar
+                const calendarContainer = document.createElement("div");
+                calendarContainer.id = "calendarContainer";
+
+                // Generate the month header of the calendar
+                const headerDiv = document.createElement("div");
+                const headerUL = document.createElement("ul");
+                const headerNextBt = document.createElement("button");
+                const headerPrevBt = document.createElement("button");
+                const headerMonthLabel = document.createElement("li");
+
+                headerMonthLabel.innerHTML = `${month}<br><span style="font-size:18px">${currentYear}</span>`;
+                headerMonthLabel.id = "monthYearLabel";
+                headerNextBt.innerHTML = "&#10095;";
+                headerPrevBt.innerHTML = "&#10094;";
+                headerNextBt.className = "next";
+                headerPrevBt.className = "prev";
+                headerUL.className = "month"; 
+                headerDiv.className = "calendarHeader";
+
+                // Use arrow functions to pass state
+                headerNextBt.onclick = () => {
+                    currentMonthIndex++;
+                    if (currentMonthIndex > 11) {
+                        currentMonthIndex = 0;
+                        currentYear++;
+                    }
+                    handleCalendar();
+                };
+
+                headerPrevBt.onclick = () => {
+                    currentMonthIndex--;
+                    if (currentMonthIndex < 0) {
+                        currentMonthIndex = 11;
+                        currentYear--;
+                    }
+                    handleCalendar();
+                };
+
+                headerUL.appendChild(headerPrevBt);
+                headerUL.appendChild(headerMonthLabel);
+                headerUL.appendChild(headerNextBt);
+
+                headerDiv.appendChild(headerUL);
+
+                calendarContainer.appendChild(headerDiv);
+                
+                // Dynamically generate the days of the calendar using javascript
+                const weekDaysUL = document.createElement("ul");
+                weekDaysUL.className = "weekdays";
+                const weekdays = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+                for (const dayName of weekdays) {
+                    const li = document.createElement("li");
+                    li.textContent = dayName;
+                    weekDaysUL.appendChild(li);
+                }
+
+                calendarContainer.appendChild(weekDaysUL);
+
+                // Dynamically generate the calendar days based on the month and the year
+                const calendarDays = document.createElement("ul");
+                calendarDays.className = "days";
+                calendarDays.id = "calendarDays";
+
+                // Get the first day of the month (will be 0-6)
+                const firstDay = new Date(currentYear, currentMonthIndex, 1).getDay();
+                const daysInMonth = new Date(currentYear, currentMonthIndex + 1, 0).getDate();
+
+                // Add leading empty <li> for alignment
+                const startDay = (firstDay + 6) % 7; // Adjust to make Monday = 0
+                for (let i = 0; i < startDay; i++) {
+                    const li = document.createElement("li");
+                    calendarDays.appendChild(li);
+                }
+
+                // Match the rest of the days in the month with their weekday names
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const li = document.createElement("li");
+                    const liButton = document.createElement("button");
+                    liButton.className = "liButton";
+                    liButton.onclick = (event) => fetchList(event);
+                    liButton.textContent = day;
+                    li.appendChild(liButton);
+                    calendarDays.appendChild(li);
+                }
+
+                calendarContainer.appendChild(calendarDays);
+
+                // Append the calendar to the body (or another container)
+                document.body.appendChild(calendarContainer);
+
+                // Listen for clicks outside the calendar to close it
+                setTimeout(() => {
+                    const calendar = document.getElementById("calendarContainer");
+                    const handleClickOutside = (event) => {
+                        if (calendar && !calendar.contains(event.target)) {
+                            calendar.remove();
+                            document.removeEventListener("click", handleClickOutside);
+                        }
+                    };
+
+                    document.addEventListener("click", handleClickOutside);
+                }, 0);
+            }
+
+            
+
+            function fetchList(event) {
+                // Get the date clicked on
+                const day = event.target.textContent.padStart(2, '0'); // Ensure 2 digits
+                const month = (currentMonthIndex + 1).toString().padStart(2, '0'); // Months are 0-indexed
+                const year = currentYear;
+
+                const dateString = `${year}-${month}-${day}`; // Format: YYYY-MM-DD
+
+                // Send GET request to backend
+                fetch(`/getList?Date=${dateString}`)
+                    .then(response => {
+                        if (!response.ok) {
+                            throw new Error("Network response was not ok");
+                        }
+                        return response.json();
+                    })
+                    .then(data => {
+                        console.log("Received list data:", data);
+                        displayList(data);
+                    })
+                    .catch(error => {
+                        console.error("Error fetching list:", error);
+                    });
+            }   
+
+
+
+            function displayList(listData) {
+                // Remove any previous results
+                document.querySelectorAll(".retrievedList").forEach(el => el.remove());
+
+                // Create a new ordered list using the data from the fetchList() function
+                const list = document.createElement("ul");
+                list.className = "retrievedList";
+
+                // Add the list elements of the list
+                if (!Array.isArray(listData) || listData.length === 0) {
+                    const listElement = document.createElement("li");
+                    listElement.className = "retrievedListElement"
+                    listElement.textContent = "No list was found for this date";
+                    list.appendChild(listElement);
+                }
+                else {
+                    for (let i = 0; i < listData.length; i++) {
+                        const item = listData[i];
+                        const li = document.createElement("li");
+                        li.className = "retrievedListElement";
+                        li.textContent = `${item.taskName}: ${item.taskText}`;
+                        list.appendChild(li);
+                    }
+                }
+
+                // Append the result list somewhere visible
+                // e.g., under the calendar or at the end of the body
+                const calendar = document.getElementById("calendarContainer");
+                (calendar ?? document.body).appendChild(list);
+            }
+        </script>
+    </body>
+</html>

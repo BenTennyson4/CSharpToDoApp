@@ -1,0 +1,66 @@
+.calendarHeader {
+    width: 100%;
+    box-sizing: border-box;
+}
+
+.month {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px;
+    background-color: #f5f5f5;
+    border: 1px solid #ccc;
+    margin-bottom: 10px;
+}
+
+.month li {
+    list-style: none;
+    flex: 1;
+    text-align: center;
+    font-weight: bold;
+}
+
+.month li.prev,
+.month li.next {
+    flex: 0 0 10%;
+    text-align: center;
+    cursor: pointer;
+    font-size: 20px;
+}
+
+.days {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.weekdays {
+    display: flex;
+    flex-wrap: nowrap; /* prevent wrapping */
+    width: 100%;        /* ensure it's full width */
+    box-sizing: border-box;
+}
+
+.weekdays li,
+.days li {
+     width: calc((100% - 6 * 4px) / 7); /* exactly 7 columns */
+    box-sizing: border-box;
+    border: 1px solid #ddd;
+    text-align: center;
+    padding: 10px 0;
+    font-family: Arial, sans-serif;
+    height: 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+#calendarContainer {
+    margin: 20px auto;
+    width: 100%;
+    max-width: 400px;
+    border: 1px solid #ccc;
+    border-radius: 8px;
+    padding: 10px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+}

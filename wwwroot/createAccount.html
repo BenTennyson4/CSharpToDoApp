@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>C# to do app</title>
+        <meta charset="utf-8">
+        <meta name="author" content="Ben Tennyson">
+        <meta name="description" content="">
+        <link rel="stylesheet" href="indexStyles.css">
+        <link rel="html" href="homePage.html">
+    </head>
+    <body>
+        <div class="createAccount">
+            <h1>Create Account</h1>
+            <input type="text" class="username" placeholder="Username">
+            <input type="password" class="password" placeholder="Password">
+            <input type="password" class="confirmPassword" placeholder="Confirm Password">
+            <button onclick=createUser() class="createUserButton">Create</button>
+        </div>
+        <script>
+            
+            async function createUser() {
+                const usernameField = document.querySelector("input.username");
+                const passwordField = document.querySelector("input.password");
+                const confirmPasswordField = document.querySelector("input.confirmPassword");
+
+                // Get the values from the elements and remove leading and trailing whitespace using trim()
+                const username = usernameField.value.trim();
+                const password = passwordField.value.trim();
+                const confirmPassword = confirmPasswordField.value.trim();
+
+                // Check if the password and confirmPassword values are the same
+                if (password != confirmPassword) {
+                    alert("Confirm password is not the same as password.");
+                } else {
+                    // Create a DTO for the data that needs to be passed to the backend
+                    const userDto = {
+                        username: username,
+                        password: password
+                    };
+
+                    // Send POST request to the backend containing the user credentials
+                    console.log("Sending the user info to the backend");
+                    try {
+                        const response = await fetch("/createAccount", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json"
+                            },
+                            body: JSON.stringify(userDto)
+                        });
+
+                        if (!response.ok) {
+                            throw new Error("Server returned error status.");
+                            alert("There was an issue creating your account.");
+                        } else {
+                            console.log("Account creation successful");
+                            window.location.href = "homePage.html";
+                        }
+
+                    } catch(err) {
+                        alert("An error occurred while creating your account.");
+                        console.error("Account creation failed:", err);
+                    }
+                }
+
+
+            }
+
+        </script>
+
+    </body>
+</html>
