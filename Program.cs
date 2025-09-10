@@ -1,12 +1,9 @@
 using Swashbuckle.AspNetCore.SwaggerUI;
 // Make the ADO.NET classes available
 using Microsoft.Data.SqlClient;
-using Microsoft.AspNetCore.Builder;
-using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
-using System.Data.Common;
 using Microsoft.AspNetCore.Mvc;
-using System.Data.SqlClient;
+using System.Data;
+
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -25,6 +22,7 @@ if (app.Environment.IsDevelopment())
 app.UseDefaultFiles();    // Looks for index.html or default.html
 app.UseStaticFiles();
 
+// Redirect all incoming HTTP requests to HTTPS
 app.UseHttpsRedirection();
 
 app.MapPost("/login", async ([FromBody] LoginDto values) => await login(values))
@@ -42,37 +40,62 @@ app.MapPut("/putTasks", async ([FromBody] List<TaskInputDto> queryValues) => awa
 app.MapGet("/getList", getToDoList)
 .WithName("TaskRetriever");
 
+app.MapDelete("/deleteList", deleteList)
+.WithName("ListDelete");
 
-static async Task<IResult> login(LoginDto values)
+
+static async Task<IResult> login(LoginDto loginValues)
 {
-    string connectionString = "Server=LAPTOP-EJD37JMV,1433;Database=C#ToDoApp;Integrated Security=True;Encrypt=False;TrustServerCertificate=True;";
-    using (SqlConnection conn = new SqlConnection(connectionString))
+    // Use the database connection object returned from the DBConnectionUtility class
+    using (SqlConnection conn = await DBConnectionUtility.GetConnectionAsync())
     {
-        await conn.OpenAsync(); // Open the connection to the database
 
-        // Make the query string using the parameters from values
-        string queryText = @"SELECT * FROM AppUser WHERE Username = @Username AND UserPassword = @UserPassword";
+        // Make the query string using the parameters from loginValues
+        const string queryText = @"
+            SELECT UserPassword
+            FROM dbo.AppUser
+            WHERE Username = @Username;";
+
 
         // Create executable sql object to use against the database
         using SqlCommand cmd = new SqlCommand(queryText, conn);
 
         // Add the queryParam value to the object
-        cmd.Parameters.AddWithValue("@Username", values.username);
-        cmd.Parameters.AddWithValue("@UserPassword", values.password);
+        cmd.Parameters.AddWithValue("@Username", loginValues.username);
 
         // Execute the query 
         try
         {
-            int mathCount = (int)await cmd.ExecuteScalarAsync(); // Get the num of rows with matching username and password
-            bool userExists = mathCount > 0;
+            // Check if there are any rows with matching username and password
+            var storedHashObj = await cmd.ExecuteScalarAsync(); // Get the value of the first column and row of the result set
 
-            Console.WriteLine($"Login attempt for {values.username}: {(userExists ? "Success" : "Fail")}");
-            return Results.Ok(userExists);
+            // If nothing was returned then no such user exists
+            if (storedHashObj is null || storedHashObj == DBNull.Value)
+            {
+                Console.WriteLine($"Login attempt for {loginValues.username}: Fail (no such user)");
+                return Results.Ok(false);
+            }
+
+            // Ensure that the returned hashed password is a string
+            var storedHash = (string)storedHashObj;
+
+            // Verify the string the user passed matches the password returned from the database
+            bool verify = PasswordHasher.VerifyPassword(loginValues.password, storedHash);
+
+            if (verify == true)
+            {
+                Console.WriteLine($"Login attempt for {loginValues.username}: Successfull");
+            }
+            else
+            {
+                Console.WriteLine($"Login attempt for {loginValues.username}: Failed (password is incorrect)");
+            }
+            return Results.Ok(verify);
         }
         catch (Exception ex)
         {
-            Console.WriteLine("Error inserting task: " + ex.Message);
-            return Results.Problem("Error inserting task: " + ex.Message);
+            Console.WriteLine("Error during login: " + ex.Message);
+            return Results.Problem("Error during login: " + ex.Message);
         }
 
     }
@@ -82,11 +105,9 @@ static async Task<IResult> login(LoginDto values)
 
 static async Task<IResult> createAccount(AccountCredentialsDto values)
 {
-    string connectionString = "Server=LAPTOP-EJD37JMV,1433;Database=C#ToDoApp;Integrated Security=True;Encrypt=False;TrustServerCertificate=True;";
-    using (SqlConnection conn = new SqlConnection(connectionString))
+    // Use the database connection object returned from the DBConnectionUtility class
+    using (SqlConnection conn = await DBConnectionUtility.GetConnectionAsync())
     {
-        await conn.OpenAsync(); // Open the connection to the database
-
         // Make the query string using the parameters from values
         string queryText = @"INSERT INTO AppUser (UserPassword, Username) VALUES (@UserPassword, @Username)";
 
@@ -126,14 +147,9 @@ static async Task<IResult> putList(ListInputDto values)
     Console.WriteLine($"ListID: {values.listID}");
     Console.WriteLine($"UserID: {values.userID}");
 
-    // Create a connection string containing servername, databasename, and authentication method
-    // Note: try to use config file for managing db connection credentials 
-    string connectionString = "Server=LAPTOP-EJD37JMV,1433;Database=C#ToDoApp;Integrated Security=True;Encrypt=False;TrustServerCertificate=True;";
-
-    using (SqlConnection conn = new SqlConnection(connectionString))
+    // Use the database connection object returned from the DBConnectionUtility class
+    using (SqlConnection conn = await DBConnectionUtility.GetConnectionAsync())
     {
-        conn.Open();
-
         string queryText = "INSERT INTO List (ListID, UserID) VALUES (@ListID, @UserID)";
 
         using SqlCommand cmd = new SqlCommand(queryText, conn);
@@ -158,80 +174,125 @@ static async Task<IResult> putList(ListInputDto values)
 }
 
 
+
 static async Task<IResult> putTasks(List<TaskInputDto> queryValues)
 {
-    int successCount = 0;
-    int failCount = 0;
-    List<string> errors = new();
+    if (queryValues == null || queryValues.Count == 0)
+        return Results.BadRequest("No tasks provided.");
 
-    for (int i = 0; i < queryValues.Count; i++)
+    // Upsert the tasks from the saved list into the Task table
+    try
     {
-        Console.WriteLine("Received task:");
-        Console.WriteLine($"Priority: {queryValues[i].priority}");
-        Console.WriteLine($"TaskText: {queryValues[i].taskText}");
-        Console.WriteLine($"TaskName: {queryValues[i].taskName}");
-        Console.WriteLine($"ListID: {queryValues[i].listID}");
-        Console.WriteLine($"ListID: {queryValues[i].listPosition}");
-
-        // Create a connection string containing servername, databasename, and authentication method
-        // Note: try to use config file for managing db connection credentials 
-        string connectionString = "Server=LAPTOP-EJD37JMV,1433;Database=C#ToDoApp;Integrated Security=True;Encrypt=False;TrustServerCertificate=True;";
-
         // Create the connection. The connection will close automatically when the closing block is exited 
-        using (SqlConnection conn = new SqlConnection(connectionString))
+        SqlConnection conn = await DBConnectionUtility.GetConnectionAsync();
+
+        // Begin a transaction on the database connection to ensure that subsequent database operations 
+        // do not read uncommitted data.
+        using var tx = conn.BeginTransaction(IsolationLevel.ReadCommitted);
+
+        // Pre-prepare UPDATE and INSERT commands (reused for each item)
+        const string updateSql = @"
+        UPDATE dbo.Task
+        SET Priority=@Priority, TaskText=@TaskText, TaskName=@TaskName, Completed=@Completed
+        WHERE ListID=@ListID AND ListPos=@ListPos;
+        ";
+
+        const string insertSql = @"
+        INSERT INTO dbo.Task (Completed, Priority, TaskText, TaskName, ListID, ListPos, TaskCreatedAt)
+        VALUES (@Completed, @Priority, @TaskText, @TaskName, @ListID, @ListPos, SYSUTCDATETIME());
+        ";
+
+
+        using var updateCmd = new SqlCommand(updateSql, conn, tx);
+        updateCmd.Parameters.Add("@Priority", SqlDbType.Int);
+        updateCmd.Parameters.Add("@TaskText", SqlDbType.NVarChar, 4000);
+        updateCmd.Parameters.Add("@TaskName", SqlDbType.NVarChar, 200);
+        updateCmd.Parameters.Add("@Completed", SqlDbType.Bit);
+        updateCmd.Parameters.Add("@ListID", SqlDbType.Int);
+        updateCmd.Parameters.Add("@ListPos", SqlDbType.Int);
+
+        using var insertCmd = new SqlCommand(insertSql, conn, tx);
+        insertCmd.Parameters.Add("@Completed", SqlDbType.Bit);
+        insertCmd.Parameters.Add("@Priority", SqlDbType.Int);
+        insertCmd.Parameters.Add("@TaskText", SqlDbType.NVarChar, 4000);
+        insertCmd.Parameters.Add("@TaskName", SqlDbType.NVarChar, 200);
+        insertCmd.Parameters.Add("@ListID", SqlDbType.Int);
+        insertCmd.Parameters.Add("@ListPos", SqlDbType.Int);
+
+        int updated = 0, inserted = 0;
+
+        foreach (var task in queryValues)
         {
-            conn.Open(); // Open the connection to the database
+            // UPDATE first
+            updateCmd.Parameters["@Priority"].Value = task.priority;
+            updateCmd.Parameters["@TaskText"].Value = (object?)task.taskText ?? DBNull.Value;
+            updateCmd.Parameters["@TaskName"].Value = (object?)task.taskName ?? DBNull.Value;
+            updateCmd.Parameters["@Completed"].Value = task.completed;
+            updateCmd.Parameters["@ListID"].Value = task.listID;
+            updateCmd.Parameters["@ListPos"].Value = task.listPosition;
 
-            // Insert the ToDoItem using the date query parameter
-            string queryText = @"INSERT INTO Task (Priority, TaskText, TaskName, ListID, ListPos)
-            VALUES (@priority, @taskText, @taskName, @listID, @listPosition)";
+            int rows = await updateCmd.ExecuteNonQueryAsync();
 
-            // Prepare the query for execution
-            // Create an object that will be executed against the database
-            using SqlCommand cmd = new SqlCommand(queryText, conn);
-            // Add the queryParam value to the object
-            cmd.Parameters.AddWithValue("@priority", queryValues[i].priority);
-            cmd.Parameters.AddWithValue("@taskText", queryValues[i].taskText);
-            cmd.Parameters.AddWithValue("@taskName", queryValues[i].taskName);
-            cmd.Parameters.AddWithValue("@listID", queryValues[i].listID);
-            cmd.Parameters.AddWithValue("@listPosition", queryValues[i].listPosition);
-
-            // Execute the query 
-            try
+            if (rows == 0)
             {
-                int rowsAffected = await cmd.ExecuteNonQueryAsync();
-                Console.WriteLine($"Rows affected: {rowsAffected}");
-                if (rowsAffected > 0)
-                    successCount++;
-                else
-                    failCount++;
+                // Not found -> INSERT
+                insertCmd.Parameters["@Completed"].Value = task.completed;
+                insertCmd.Parameters["@Priority"].Value = task.priority;
+                insertCmd.Parameters["@TaskText"].Value = (object?)task.taskText ?? DBNull.Value;
+                insertCmd.Parameters["@TaskName"].Value = (object?)task.taskName ?? DBNull.Value;
+                insertCmd.Parameters["@ListID"].Value = task.listID;
+                insertCmd.Parameters["@ListPos"].Value = task.listPosition;
+
+                await insertCmd.ExecuteNonQueryAsync();
+                inserted++;
             }
-            catch (Exception ex)
+            else
             {
-                Console.WriteLine("Error inserting task: " + ex.Message);
-                return Results.Problem("Error inserting task: " + ex.Message);
+                updated++;
             }
         }
+
+        // To make this transaction a “true sync”: delete DB rows for this list that aren’t in the payload
+        var incomingPositions = queryValues.Select(x => x.listPosition).ToHashSet();
+        if (incomingPositions.Count > 0)
+        {
+            // Build NOT IN (@P0,@P1,...) safely
+            var paramNames = incomingPositions.Select((_, i) => $"@P{i}").ToArray();
+            var deleteSql = $@"
+                DELETE FROM dbo.Task
+                WHERE ListID = @ListID
+                AND ListPos NOT IN ({string.Join(",", paramNames)});
+            ";
+
+            using var deleteCmd = new SqlCommand(deleteSql, conn, tx);
+             int listId = queryValues[0].listID;
+            deleteCmd.Parameters.AddWithValue("@ListID", listId);
+
+            int i = 0;
+            foreach (var pos in incomingPositions)
+                deleteCmd.Parameters.Add(paramNames[i++], SqlDbType.Int).Value = pos;
+
+            await deleteCmd.ExecuteNonQueryAsync();
+        }
+
+        await tx.CommitAsync();
+
+        return Results.Ok(new { updated, inserted });
     }
-    if (failCount == 0)
-        return Results.Ok($"{successCount} tasks inserted successfully.");
-    else
-        return Results.Problem($"{successCount} tasks inserted, {failCount} failed. Errors: {string.Join("; ", errors)}");
-    
+    catch (Exception ex)
+    {
+        return Results.Problem("Save failed: " + ex.Message);
+
+    }
 }
 
 
+
 static async Task<IResult> getToDoList([AsParameters] GetQueryParameters queryParameter)
-{
-    // Create a connection string containing servername, databasename, and authentication method
-    // Note: try to use config file for managing credentials 
-    string connectionString = "Server=LAPTOP-EJD37JMV\\SQLEXPRESS;Database=C#ToDoApp;Integrated Security=True;Encrypt=False;TrustServerCertificate=True;";
-
-    // Create the connection. The connection will close automatically when the closing block is exited 
-    using (SqlConnection conn = new SqlConnection(connectionString))
+{ 
+        // Use the database connection object returned from the DBConnectionUtility class
+    using (SqlConnection conn = await DBConnectionUtility.GetConnectionAsync())
     {
-        conn.Open(); // Open the connection to the database
-
         // Get the ToDoList using the date query parameter obtained from the url
         const string listQuery = @"
             SELECT TOP (1) ListID, UserID, ListCompleted, ListCreatedAt
@@ -294,6 +355,63 @@ static async Task<IResult> getToDoList([AsParameters] GetQueryParameters queryPa
 }
 
 
+
+static async Task<IResult> deleteList()
+{
+    // Use the database connection object returned from the DBConnectionUtility class
+    using (SqlConnection conn = await DBConnectionUtility.GetConnectionAsync())
+    {
+        // First delete the tasks from the Task table
+        // Delete the tasks related to the list from the Task table
+        string deleteStatementTask = "DELETE FROM Task WHERE ListID = @ListID";
+
+        SqlCommand cmd1 = new SqlCommand(deleteStatementTask, conn);
+
+        // Get the date for the listID
+        DateTime dateTime = DateTime.Now;
+        int day = dateTime.Day;
+        int month = dateTime.Month;
+        int year = dateTime.Year;
+
+        string date = $"{month}{day}{year}";
+
+        cmd1.Parameters.AddWithValue("@ListID", date);
+
+        try
+        {
+            int rowsAffected = await cmd1.ExecuteNonQueryAsync();
+            Console.WriteLine($"Rows affected: {rowsAffected}");
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error deleting the list from List table" + ex.Message);
+            return Results.Problem("Error deleting the list from the List table" + ex.Message);
+        }
+
+        // Delete statement for deleting the list from the List table
+        string deleteStatementList = "DELETE FROM List WHERE ListID = @ListID";
+
+        SqlCommand cmd2 = new SqlCommand(deleteStatementList, conn);
+
+        cmd2.Parameters.AddWithValue("@ListID", date);
+
+        try
+        {
+            int rowsAffected = await cmd2.ExecuteNonQueryAsync();
+            Console.WriteLine($"Rows affected: {rowsAffected}");
+            return Results.Ok();
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("Error deleting the list from List table" + ex.Message);
+            return Results.Problem("Error deleting the list from the List table" + ex.Message);
+        }
+
+    }
+}
+
+
+
 app.Run();
 
 
@@ -301,7 +419,7 @@ public record ListRecord(int ListID, int UserID, bool ListCompleted, DateTime Li
 public record TaskRecord(int TaskID, bool Completed, int Priority, string TaskText,
     string TaskName, int ListID, int ListPos, DateTime TaskCreatedAt);
 record GetQueryParameters(DateTime Date);
-record TaskInputDto(int taskID, int priority, string taskText, string taskName, int listID, int listPosition);
+record TaskInputDto(int taskID, int priority, string taskText, string taskName, bool completed, int listID, int listPosition);
 record LoginDto(string username, string password);
 record ListInputDto(int listID, int userID);
 record AccountCredentialsDto(string username, string password);

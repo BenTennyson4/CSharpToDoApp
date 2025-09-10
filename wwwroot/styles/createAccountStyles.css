@@ -1,0 +1,36 @@
+body {
+  margin: 0;
+  min-height: 100vh;
+  background-color: #FFFF6E;
+}
+
+/* header stays top-left */
+.header {
+  margin: 16px;
+  height: 100px;
+}
+
+/* this wrapper fills the page and centers its child */
+.mainContent {
+  display: grid;
+  place-items: center; /* horizontal center */
+}
+
+/* login box styles */
+.createAccountContainer {
+  background-color: #42464B;
+  border: 2px solid black;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center; 
+  gap: 8px;
+
+  width: 220px;             
+  height: 300px; 
+  max-width: 90vw;
+  padding: 12px;
+  box-sizing: border-box;
+  border-radius: 8px;
+}

@@ -5,16 +5,19 @@
         <meta charset="utf-8">
         <meta name="author" content="Ben Tennyson">
         <meta name="description" content="">
-        <link rel="stylesheet" href="indexStyles.css">
+        <link rel="stylesheet" href="styles/createAccountStyles.css">
         <link rel="html" href="homePage.html">
     </head>
     <body>
-        <div class="createAccount">
-            <h1>Create Account</h1>
-            <input type="text" class="username" placeholder="Username">
-            <input type="password" class="password" placeholder="Password">
-            <input type="password" class="confirmPassword" placeholder="Confirm Password">
-            <button onclick=createUser() class="createUserButton">Create</button>
+        <h1 class="header">Task App</h1>
+        <div class="mainContent">
+            <div class="createAccountContainer">
+                <h2>Create Account</h2>
+                <input type="text" class="username" placeholder="Username">
+                <input type="password" class="password" placeholder="Password">
+                <input type="password" class="confirmPassword" placeholder="Confirm Password">
+                <button onclick=createUser() class="createUserButton">Create</button>
+            </div>
         </div>
         <script>
             
@@ -54,6 +57,7 @@
                             alert("There was an issue creating your account.");
                         } else {
                             console.log("Account creation successful");
+                            localStorage.setItem(username, usernameField);
                             window.location.href = "homePage.html";
                         }
 

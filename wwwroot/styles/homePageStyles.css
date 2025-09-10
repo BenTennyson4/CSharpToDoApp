@@ -1,3 +1,68 @@
+/* Styles for the tool bar for making lists on the home page */
+body {
+  background-color:	#FFFF6E;
+}
+
+.header {
+    width: 200px;
+}
+
+.toolBar {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.listSize {
+    width: 130px;
+    padding: 12px;
+}
+
+.taskInc {
+    padding: 12px;
+}
+
+.taskDec {
+    padding: 12px;
+}
+
+.saveButton {
+    padding: 12px;
+}
+
+.calendarButton {
+    padding: 12px;
+}
+
+.deleteButton {
+    padding: 12px;
+}
+
+/* Style the list header */
+.tasksHeader {
+    font-weight: bold;
+}
+
+/* Styles for the list on the home page */
+
+.taskName {
+    border-style: solid;
+    border-radius: 10px;
+    width: 200px;
+}
+
+.taskText {
+    border-style: solid;
+    border-radius: 10px;
+    width: 200px;
+}
+
+.prioritySelector {
+    border-radius: 10px;
+}
+
+/* The following styles the calendar */
+
 .calendarHeader {
     width: 100%;
     box-sizing: border-box;
