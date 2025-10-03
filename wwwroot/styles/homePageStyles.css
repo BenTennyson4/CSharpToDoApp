@@ -1,16 +1,40 @@
 /* Styles for the tool bar for making lists on the home page */
+/* make box-sizing predictable and remove default body margin to avoid accidental horizontal overflow */
+*, *::before, *::after {
+    box-sizing: border-box;
+}
 body {
-  background-color:	#FFFF6E;
+    margin: 0;
+    background-color: #FFFF6E;
 }
 
 .header {
     width: 200px;
 }
 
+.logoutButton {
+    position: absolute;
+    top: 12px;
+    right: 20px;
+    padding: 8px 12px;
+    border-radius: 4px;
+    background: #fff;
+    border: 1px solid #ccc;
+    cursor: pointer;
+}
+
 .toolBar {
     display: flex;
     align-items: center;
     justify-content: center;
+}
+
+.reminderToggleLabel {
+    margin-left: 12px;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .listSize {
@@ -44,21 +68,155 @@ body {
 }
 
 /* Styles for the list on the home page */
-
-.taskName {
-    border-style: solid;
-    border-radius: 10px;
-    width: 200px;
+/* Make each task row a grid container */
+.taskHeaderRow {
+    display: grid;
+    /* tighter columns to guarantee the rightmost header stays visible */
+    grid-template-columns: 22px 0.25fr 0.45fr 0.2fr 60px; /* number | name | description | priority | completed */
+    gap: 1px;
+    font-weight: bold;
+    margin: 0 0 10px 0; /* horizontal spacing provided by .tasksContainer */
+    align-items: center;
+    width: 100%;
 }
 
-.taskText {
-    border-style: solid;
-    border-radius: 10px;
-    width: 200px;
+/* Container to ensure header and rows share the same width */
+.tasksContainer {
+    margin: 0; /* use full available width */
+    width: 100%;
+    padding-right: 8px; /* small right padding so the last column isn't clipped by viewport edges */
 }
 
+.taskRow {
+    display: grid;
+    /* include the numbering column so the list marker lines up with the header */
+    grid-template-columns: 22px 0.25fr 0.45fr 0.2fr 60px; /* compact columns */
+    gap: 1px;
+    align-items: center;
+    margin: 5px 0; /* vertical spacing only; horizontal handled by container */
+    padding: 5px 0;
+    width: 100%;
+}
+
+/* Make the header look like column headers */
+.taskHeaderRow > * {
+    padding: 2px 4px;
+    background: rgba(255,255,255,0.05);
+    border-bottom: 2px solid #d0d0d0;
+    box-sizing: border-box;
+    white-space: nowrap; /* keep header labels on one line */
+    display: flex;
+    align-items: center;
+    min-width: 0; /* allow shrink so columns stay on one line */
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.taskHeaderRow > *:not(:last-child) {
+    border-right: 1px solid #e8e8e8;
+}
+
+/* Header justification: align name/description with start of inputs, center priority */
+.taskHeaderRow > span:nth-child(2),
+.taskHeaderRow > span:nth-child(3) {
+    justify-content: flex-start;
+}
+.taskHeaderRow > span:nth-child(4) {
+    justify-content: center;
+}
+
+/* Small padding for each cell in the task rows so columns visually line up */
+.taskRow > * {
+    padding: 2px 4px;
+    box-sizing: border-box;
+    display: flex;
+    align-items: center;
+    min-width: 0;
+}
+
+/* Completed column styling */
+.completedCell {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+.completedInput {
+    width: 12px;
+    height: 12px;
+    margin: 0;
+}
+
+/* Make inputs and selects fill their grid cell */
+.taskRow input.taskName,
+.taskRow input.taskText,
+.taskRow .priorityCell,
+.taskRow select.prioritySelector {
+    width: 90%;
+    display: block;
+}
+
+/* Ensure the priorityCell lays out label and select vertically */
+.priorityCell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+/* Keep the Task Name input from taking too much space and center the priority select */
+.taskRow input.taskName {
+    max-width: none;   /* or use something like 100% */
+    width: 100%;       /* fill available space */
+}
+
+.priorityCell {
+    justify-content: center;
+}
+.priorityCell select.prioritySelector {
+    max-width: 100px;  /* or remove entirely */
+    width: 100%;       /* makes it fill available column space */
+}
+
+/* hide the textual label inside each priority cell (we keep it for accessibility) */
+.priorityCell label {
+    display: none;
+}
+
+/* Numbering column */
+.taskNumber {
+    text-align: right;
+    padding-right: 4px; /* reduced so the numbering column doesn't add extra width */
+    color: #333;
+    font-weight: bold;
+}
+
+/* Ensure list markers (1., 2., ...) sit inside the grid first column */
+ol, ul {
+    list-style-position: inside;
+    padding-left: 0;
+}
+
+/* Reset list styling: we use a custom numbering element and container spacing */
+#taskList {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+
+/* Input styling */
+.taskName, .taskText {
+    padding: 6px;
+    border: 1px solid #999;
+    border-radius: 4px;
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 13px;
+}
+
+/* Priority dropdown styling */
 .prioritySelector {
-    border-radius: 10px;
+    padding: 4px;
+    border-radius: 4px;
+    width: 100%;
+    font-size: 13px;
 }
 
 /* The following styles the calendar */

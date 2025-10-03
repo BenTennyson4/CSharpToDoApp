@@ -10,8 +10,9 @@
     </head>
     <body>
         <h1 class="header" id="header"></h1>
+    <button id="logoutButton" class="logoutButton" onclick="handleLogout()">Logout</button>
         <div class="toolBar">
-            <input type="text" onkeydown="handleListSize(event)" class="listSize" placeholder="Enter number of tasks">
+            <input type="text" onkeydown="handleListSize(event)" class="listSize" placeholder="Number of tasks">
 
             <button class="taskDec" onclick="handleTaskDec()">-</button>
             <button class="taskInc" onclick="handleTaskInc()">+</button>
@@ -19,65 +20,90 @@
             <button class="saveButton" onclick="putList()">Save List</button>
             <button class="calendarButton" onclick="handleCalendar()">Calendar</button>
             <button class="deleteButton" onclick="deleteList(event)">Delete List</button>
+            <label class="reminderToggleLabel"><input type="checkbox" id="enableRemindersCheckbox"> Enable Reminders</label>
         </div>
+            <span></span>
 
         <p class="tasksHeader">Tasks: </p>
-        <!-- Ordered list container -->
-        <ol id="taskList">
-        </ol>
+        <div class="tasksContainer">
+            <div class="taskHeaderRow">
+                <span></span>
+                <span>Task Name</span>
+                <span>Description</span>
+                <span>Priority</span>
+                <span>Done</span>
+            </div>
+
+            <!-- Ordered list container -->
+            <ol id="taskList">
+            </ol>
+        </div>
 
         <script type="text/javascript">
-            // Set a timer to ensure that the user is not logged in forever
-            const minutes = 10;
-            const delayInMiliseconds = minutes * 60 * 1000;
-
-            // Function to start the inactvity timer
-            function startInactivityTimer() {
-                // Start the inactivity timer when the page loads or after a user logs in
-                inactivityTimer = setTimeout(handleInactivity, delayInMiliseconds);
-            }
-
-            // Function to reset the inactivity timer
-            function resetInactivityTimer() {
-                clearTimeout(inactivityTimer)
-                startInactivityTimer()
-            }
-            // Attach event listeners to different user interation events 
-            document.addEventListener('mousemove', resetInactivityTimer);
-            document.addEventListener('keypress', resetInactivityTimer);
-            document.addEventListener('click', resetInactivityTimer);
-            document.addEventListener('scroll', resetInactivityTimer);
-
-            function sleep(ms) {
-                return new Promise(resolve => setTimeout(resolve, ms));
-            }
-
-            async function handleInactivity() {
-                console.log("User is inactive. Performing logout in 1 minute")
-                let userConfirmation = confirm("You have been inactive for 10 minutes and will be logged out unless you click ok.");
-                await sleep(60000); // Wait for 1 minute (60,000 milliseconds)
-                if (userConfirmation) {
-                    resetInactivityTimer()
-                } else {
-                    console.log("Logging out due to user inactvity")
-                    window.location.href = "index.html"
-                }
-            }
-
-            // Start the timer
-            startInactivityTimer();
+            // Automatic inactivity logout has been removed so that client-side
+            // notifications continue while the page remains open. Logout still
+            // happens when the user clicks the Logout button.
 
 
 
             // Set the title of the home page
             let storedUser = localStorage.getItem('username');
             console.log(storedUser)
-            document.getElementById("header").innerHTML = storedUser + "'s" + " Home";
+            // If no user is logged in, ensure redirect to login
+            if (!storedUser) {
+                window.location.replace('index.html');
+            } else {
+                document.getElementById("header").innerHTML = storedUser + "'s" + " Home";
+            }
+
+            // prevent navigating back to this page after logout by replacing history
+            function handleLogout() {
+                // Clear local auth/session info
+                localStorage.removeItem('username');
+                // cancel notifications
+                cancelAllNotifications();
+                // Redirect to login page and replace history entry so back doesn't return
+                window.location.replace('index.html');
+            }
 
 
 
             // Get reference to the task list
             const taskList = document.getElementById("taskList");
+            // Notification timers keyed by task unique id (listID + '-' + listPosition)
+            const notificationTimers = new Map();
+
+            // Request notification permission on page load (best-effort)
+            (async function initNotifications() {
+                try {
+                    // read persisted preference
+                    const stored = localStorage.getItem('enableReminders');
+                    const enabled = stored === null ? true : stored === 'true';
+                    const checkbox = document.getElementById('enableRemindersCheckbox');
+                    if (checkbox) checkbox.checked = enabled;
+
+                    if (enabled) {
+                        await requestNotificationPermission();
+                        // load today's saved list and schedule notifications from it
+                        loadTodaySavedList();
+                    }
+                    // wire up change handler
+                    if (checkbox) checkbox.addEventListener('change', async (e) => {
+                        const on = e.target.checked;
+                        localStorage.setItem('enableReminders', on);
+                        if (on) {
+                            const ok = await requestNotificationPermission();
+                            if (ok) loadTodaySavedList();
+                        } else {
+                            cancelAllNotifications();
+                        }
+                    });
+                } catch (err) {
+                    console.log('Notifications init skipped or failed', err);
+                }
+            })();
+
+
 
             function handleListSize(event) {
                 if (event.key === "Enter") {
@@ -96,6 +122,112 @@
 
 
 
+            // --- Notification helper functions ---
+            async function requestNotificationPermission() {
+                if (!('Notification' in window)) return false;
+                if (Notification.permission === 'granted') return true;
+                if (Notification.permission === 'denied') return false;
+                const result = await Notification.requestPermission();
+                return result === 'granted';
+            }
+
+
+
+            function msForPriorityValue(val) {
+                // backend stores priority as numbers: 2=High,1=Medium,0=Low
+                // return milliseconds interval or null for none
+                const n = Number(val);
+                if (n === 2) return 60 * 60 * 1000; // 1 hour
+                if (n === 1) return 3 * 60 * 60 * 1000; // 3 hours
+                return null; // low priority -> no notifications
+            }
+
+
+
+            function showTaskNotification(task) {
+                try {
+                    if (!('Notification' in window) || Notification.permission !== 'granted') {
+                        // optionally you could show an in-app toast here instead
+                        return;
+                    }
+
+                    const title = `${task.priority == 2 ? 'High' : task.priority == 1 ? 'Medium' : 'Task'}: ${task.taskName || 'Untitled'}`;
+                    const options = {
+                        body: task.taskText || '',
+                        tag: `today-${task.listPosition}`,
+                        renotify: true,
+                        requireInteraction: Number(task.priority) === 2
+                    };
+                    const n = new Notification(title, options);
+                    n.onclick = () => {
+                        window.focus();
+                        n.close();
+                    };
+                } catch (err) {
+                    console.error('Failed to show notification', err);
+                }
+            }
+
+
+
+            function scheduleNotificationsForTasks(tasks) {
+                // cancel any existing timers first
+                cancelAllNotifications();
+                // respect user preference
+                const enabled = localStorage.getItem('enableReminders');
+                if (enabled === 'false') return;
+                if (!Array.isArray(tasks)) return;
+
+                for (const t of tasks) {
+                    // Skip tasks that are marked completed
+                    if (t.completed === true || t.completed === "true") continue;
+
+                    const ms = msForPriorityValue(t.priority);
+                    if (!ms) continue; // skip low priority
+
+                    const key = `${t.listID ?? 'today'}-${t.listPosition ?? Math.random()}`;
+
+                    // show first notification immediately
+                    showTaskNotification(t);
+
+                    // schedule repeating notifications while page is open
+                    const id = setInterval(() => showTaskNotification(t), ms);
+                    notificationTimers.set(key, id);
+                }
+            }
+
+
+
+            function cancelAllNotifications() {
+                for (const id of notificationTimers.values()) {
+                    clearInterval(id);
+                }
+                notificationTimers.clear();
+            }
+
+
+
+            // Load today's saved list from server and schedule notifications from it
+            function loadTodaySavedList() {
+                const today = new Date();
+                const y = today.getFullYear();
+                const m = String(today.getMonth() + 1).padStart(2, '0');
+                const d = String(today.getDate()).padStart(2, '0');
+                const dateString = `${y}-${m}-${d}`; // backend expects YYYY-MM-DD
+                fetch(`/getList?Date=${dateString}`)
+                    .then(r => r.ok ? r.json() : Promise.reject('no list'))
+                    .then(data => {
+                        // data should be an array of tasks for that date
+                        scheduleNotificationsForTasks(data);
+                    })
+                    .catch(err => {
+                        // no saved list or error - nothing to schedule
+                        console.log('No saved list for today or error', err);
+                    });
+            }
+
+
+
             function handleTaskInc() {
                 addTask();
             }
@@ -105,7 +237,8 @@
             function handleTaskDec() {
                 if (taskList.children.length > 0) {
                     taskList.removeChild(taskList.lastElementChild);
-                }
+                        updateTaskNumbers();
+                    }
             }
 
 
@@ -113,11 +246,18 @@
             function addTask() {
                 // Create the new dom elements
                 const li = document.createElement("li");
+                const numberDiv = document.createElement('div');
                 const nameInput = document.createElement("input");
                 const textInput = document.createElement("input");
                 const label = document.createElement("label");
                 const select = document.createElement("select");
+                const completedLabel = document.createElement("label");
+                const completedInput = document.createElement("input");
+
                 // Set the attributes of the dom elements
+                li.className = "taskRow";
+                numberDiv.className = 'taskNumber';
+                numberDiv.textContent = (taskList.children.length + 1) + '.';
                 nameInput.placeholder = "Task Name";
                 nameInput.className = "taskName";
                 nameInput.onkeydown = handleTaskNameInput;
@@ -134,12 +274,51 @@
                     <option value="1">Medium</option>
                     <option value="0">Low</option>
                 `;
+                // default new tasks to Low priority
+                select.value = "0";
+                // Configure completed checkbox (per-row)
+                completedLabel.className = "completedToggleLabel";
+                completedLabel.textContent = ""; // keep label text empty (accessibility via aria)
+                completedInput.className = "completedInput";
+                completedInput.type = "checkbox";
+                completedInput.checked = false;
+                completedInput.setAttribute('aria-label', 'Mark task completed');
+                completedInput.addEventListener('change', () => {
+                    if (completedInput.checked) {
+                        // Find the timer key and clear it
+                        const position = li.querySelector('.taskNumber')?.textContent.replace('.', '').trim();
+                        const key = `today-${position}`;
+                        const timer = notificationTimers.get(key);
+                        if (timer) {
+                            clearInterval(timer);
+                            notificationTimers.delete(key);
+                        }
+                    }
+                });
+
+
                 // Compose the elements and add them to the dom
+                const priorityCell = document.createElement('div');
+                priorityCell.className = 'priorityCell';
+                // keep label for accessibility but visually place next to select
+                label.textContent = 'Priority:';
+                label.setAttribute('for', 'priority');
+                priorityCell.appendChild(label);
+                priorityCell.appendChild(select);
+
+                // Append in the same order as the grid: number, name, description, priority, completed
+                li.appendChild(numberDiv);
                 li.appendChild(nameInput);
                 li.appendChild(textInput);
-                li.appendChild(label);
-                li.appendChild(select);
+                li.appendChild(priorityCell);
+                const completedCell = document.createElement('div');
+                completedCell.className = 'completedCell';
+                // append a (visually-empty) label for accessibility and the checkbox
+                completedCell.appendChild(completedLabel);
+                completedCell.appendChild(completedInput);
+                li.appendChild(completedCell);
                 taskList.appendChild(li);
+                updateTaskNumbers();
             }
 
 
@@ -172,6 +351,18 @@
                             }
                         }
                     }
+                }
+            }
+
+
+            
+            // Update the visible numbering for each task row
+            function updateTaskNumbers() {
+                const items = taskList.children;
+                for (let i = 0; i < items.length; i++) {
+                    const li = items[i];
+                    const numDiv = li.querySelector('.taskNumber');
+                    if (numDiv) numDiv.textContent = (i + 1) + '.';
                 }
             }
 
@@ -212,6 +403,12 @@
 
                         const result = await response.text();
                         console.log("Server response:", result);
+                        // Schedule notifications based on the saved tasks we just sent
+                        try {
+                            scheduleNotificationsForTasks(tasks);
+                        } catch (err) {
+                            console.error('Failed to schedule notifications after save', err);
+                        }
                     } catch(err) {
                         console.error("Failed to save task:", err);
                     }
@@ -230,11 +427,15 @@
                     const taskName = li.querySelector("input.taskName")?.value.trim();
                     const taskText = li.querySelector("input.taskText")?.value.trim();
                     const priority = li.querySelector("select[name='priority']")?.value;
+                    // completed is a checkbox; read its checked state (boolean)
+                    const completedEl = li.querySelector("input.completedInput");
+                    const completed = completedEl ? Boolean(completedEl.checked) : false;
 
                     console.log("Raw values:", {
                         taskName: li.querySelector("input.taskName")?.value,
                         taskText: li.querySelector("input.taskText")?.value,
                         priority: li.querySelector("select[name='priority']")?.value,
+                        taskText: li.querySelector("input.taskText")?.value,
                     });
 
                     // Skip empty tasks
@@ -244,6 +445,7 @@
                     }
 
                     const task = {
+                        completed: completed,
                         priority: priority,
                         taskText: taskText,
                         taskName: taskName,

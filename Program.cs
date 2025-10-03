@@ -150,7 +150,13 @@ static async Task<IResult> putList(ListInputDto values)
     // Use the database connection object returned from the DBConnectionUtility class
     using (SqlConnection conn = await DBConnectionUtility.GetConnectionAsync())
     {
-        string queryText = "INSERT INTO List (ListID, UserID) VALUES (@ListID, @UserID)";
+        // Only insert if the ListID doesn't already exist
+        string queryText = @"
+            IF NOT EXISTS (SELECT 1 FROM List WHERE ListID = @ListID)
+            BEGIN
+                INSERT INTO List (ListID, UserID) VALUES (@ListID, @UserID)
+            END
+        ";
 
         using SqlCommand cmd = new SqlCommand(queryText, conn);
         // Add the queryParam value to the object
